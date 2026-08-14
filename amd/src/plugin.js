@@ -71,7 +71,9 @@ define([
         }
 
         if (!id) {
-            id = customParams.uuid || customParams.isbn || customParams.id || customParams.custom_uuid || customParams.custom_isbn || customParams.custom_id || customParams.resource_id || '';
+            id = customParams.uuid || customParams.isbn || customParams.id || customParams.custom_uuid
+              || customParams.custom_isbn || customParams.custom_id || customParams.resource_id
+              || customParams.publication_id || customParams.publicationid || customParams.book_id || '';
         }
         if (customParams.kind) {
             kind = customParams.kind;
@@ -80,14 +82,10 @@ define([
         const targetUrl = item.toolurl || item.url || item.securetoolurl || '';
         if (!id && targetUrl) {
             const matches = targetUrl.match(/(?:publication|book|resource|item|title|volume)\/([^\/\?#]+)/i)
-                         || targetUrl.match(/[?&](?:uuid|isbn|id|custom_uuid|custom_isbn|custom_id)=([^&]+)/i);
+                         || targetUrl.match(/[?&](?:uuid|isbn|id|custom_uuid|custom_isbn|custom_id|publication_id)=([^&]+)/i);
             if (matches && matches[1]) {
                 id = matches[1];
             }
-        }
-
-        if (!id && title && title !== 'Bibliotech Resource') {
-            id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
         }
 
         if (!id) {

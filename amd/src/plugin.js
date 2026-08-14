@@ -49,8 +49,7 @@ define([
         }
 
         const title = item.title || item.name || item.text || 'Bibliotech Resource';
-        let id = item.uuid || item.isbn || item.id || item.identifier || item.resource_id || item.lineitemresourceid || '';
-        let kind = item.kind || 'book';
+        let id = item.id || item.uuid || item.isbn || item.identifier || item.resource_id || '';
 
         const customParamsStr = item.instructorcustomparameters || (typeof item.custom === 'string' ? item.custom : '');
         const customParams = {};
@@ -70,19 +69,13 @@ define([
             });
         }
 
-        if (!id) {
-            id = customParams.uuid || customParams.isbn || customParams.id || customParams.custom_uuid
-              || customParams.custom_isbn || customParams.custom_id || customParams.resource_id
-              || customParams.publication_id || customParams.publicationid || customParams.book_id || '';
-        }
-        if (customParams.kind) {
-            kind = customParams.kind;
-        }
-
-        const targetUrl = item.toolurl || item.url || item.securetoolurl || '';
-        if (!id && targetUrl) {
-            const matches = targetUrl.match(/(?:publication|book|resource|item|title|volume)\/([^\/\?#]+)/i)
-                         || targetUrl.match(/[?&](?:uuid|isbn|id|custom_uuid|custom_isbn|custom_id|publication_id)=([^&]+)/i);
+        if (customParams.publication_id) {
+            id = customParams.publication_id;
+        } else if (customParams.id) {
+            id = customParams.id;
+        } else if (!id) {
+            const targetUrl = item.toolurl || item.url || item.securetoolurl || '';
+            const matches = targetUrl.match(/[?&](?:publication_id|uuid|isbn|id)=([^&]+)/i);
             if (matches && matches[1]) {
                 id = matches[1];
             }
@@ -92,13 +85,9 @@ define([
             return null;
         }
 
-        const uri = item.uri || ('bibliotech://publication/' + kind + '/' + id);
-
         return {
             id: id,
-            title: title,
-            kind: kind,
-            uri: uri
+            title: title
         };
     }
 
@@ -139,7 +128,7 @@ define([
         if (targetEditor && resourcesList && resourcesList.length > 0) {
             let htmlToInsert = '';
             resourcesList.forEach(function(resData) {
-                htmlToInsert += '<p>[bibliotech id="' + resData.id + '" title="' + resData.title + '" uri="' + resData.uri + '"]</p>';
+                htmlToInsert += '<p>[bibliotech id="' + resData.id + '" title="' + resData.title + '"]</p>';
             });
             targetEditor.insertContent(htmlToInsert);
         }

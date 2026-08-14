@@ -43,18 +43,13 @@ define([
         }
     };
 
-    function extractResourceData(data) {
-        if (!data) {
+    function extractSingleItemData(item) {
+        if (!item || typeof item !== 'object') {
             return null;
         }
 
-        let item = data;
-        if (data.multiple && Array.isArray(data.multiple) && data.multiple.length > 0) {
-            item = data.multiple[0];
-        }
-
-        const title = item.name || item.title || item.text || 'Bibliotech Resource';
-        let id = item.uuid || item.isbn || item.id || '';
+        const title = item.title || item.name || item.text || 'Bibliotech Resource';
+        let id = item.uuid || item.isbn || item.id || item.identifier || item.resource_id || item.lineitemresourceid || '';
         let kind = item.kind || 'book';
 
         const customParamsStr = item.instructorcustomparameters || (typeof item.custom === 'string' ? item.custom : '');
@@ -64,15 +59,19 @@ define([
             customParamsStr.split('\n').forEach(function(line) {
                 const parts = line.split('=');
                 if (parts.length >= 2) {
-                    customParams[parts[0].trim()] = parts.slice(1).join('=').trim();
+                    const k = parts[0].trim().toLowerCase();
+                    const v = parts.slice(1).join('=').trim();
+                    customParams[k] = v;
                 }
             });
         } else if (typeof item.custom === 'object' && item.custom !== null) {
-            Object.assign(customParams, item.custom);
+            Object.keys(item.custom).forEach(function(k) {
+                customParams[k.toLowerCase()] = item.custom[k];
+            });
         }
 
         if (!id) {
-            id = customParams.uuid || customParams.isbn || customParams.id || customParams.resource_id || '';
+            id = customParams.uuid || customParams.isbn || customParams.id || customParams.custom_uuid || customParams.custom_isbn || customParams.custom_id || customParams.resource_id || '';
         }
         if (customParams.kind) {
             kind = customParams.kind;
@@ -80,10 +79,15 @@ define([
 
         const targetUrl = item.toolurl || item.url || item.securetoolurl || '';
         if (!id && targetUrl) {
-            const matches = targetUrl.match(/(?:publication|book|resource)\/([^\/\?#]+)/i) || targetUrl.match(/[?&](?:uuid|isbn|id)=([^&]+)/i);
+            const matches = targetUrl.match(/(?:publication|book|resource|item|title|volume)\/([^\/\?#]+)/i)
+                         || targetUrl.match(/[?&](?:uuid|isbn|id|custom_uuid|custom_isbn|custom_id)=([^&]+)/i);
             if (matches && matches[1]) {
                 id = matches[1];
             }
+        }
+
+        if (!id && title && title !== 'Bibliotech Resource') {
+            id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
         }
 
         if (!id) {
@@ -100,25 +104,59 @@ define([
         };
     }
 
-    function insertResource(editor, resData, modal) {
-        if (!editor || !resData) {
-            return;
+    function extractAllResourcesData(data) {
+        if (!data) {
+            return [];
         }
-        const shortcode = '[bibliotech id="' + resData.id + '" title="' + resData.title + '" uri="' + resData.uri + '"]';
-        editor.insertContent(shortcode);
-        if (modal) {
-            modal.destroy();
+
+        let items = [];
+        if (Array.isArray(data)) {
+            items = data;
+        } else if (data.multiple && Array.isArray(data.multiple)) {
+            items = data.multiple;
+        } else if (data.items && Array.isArray(data.items)) {
+            items = data.items;
+        } else if (data.resources && Array.isArray(data.resources)) {
+            items = data.resources;
+        } else if (data.content_items && Array.isArray(data.content_items)) {
+            items = data.content_items;
+        } else {
+            items = [data];
+        }
+
+        const results = [];
+        items.forEach(function(item) {
+            const res = extractSingleItemData(item);
+            if (res) {
+                results.push(res);
+            }
+        });
+
+        return results;
+    }
+
+    function insertResources(editor, resourcesList, modal) {
+        const targetEditor = editor || activeEditor || (window.tinymce ? window.tinymce.activeEditor : null);
+
+        if (targetEditor && resourcesList && resourcesList.length > 0) {
+            let htmlToInsert = '';
+            resourcesList.forEach(function(resData) {
+                htmlToInsert += '<p>[bibliotech id="' + resData.id + '" title="' + resData.title + '" uri="' + resData.uri + '"]</p>';
+            });
+            targetEditor.insertContent(htmlToInsert);
+        }
+
+        if (modal || activeModal) {
+            const m = modal || activeModal;
+            m.destroy();
+            activeModal = null;
         }
     }
 
     // Global callback expected by Moodle LTI Deep Linking return (mod_lti/contentitem_return)
     window.processContentItemReturnData = function(returnData) {
-        const resData = extractResourceData(returnData);
-        if (resData && activeEditor) {
-            insertResource(activeEditor, resData, activeModal);
-        } else if (activeModal) {
-            activeModal.destroy();
-        }
+        const resourcesList = extractAllResourcesData(returnData);
+        insertResources(activeEditor, resourcesList, activeModal);
     };
 
     return new Promise(function(resolve) {
@@ -192,11 +230,11 @@ define([
                     }
                 }
 
-                if (data.type === 'bibliotech_resource_selected' || data.isbn || data.id || data.uuid) {
-                    const resData = extractResourceData(data);
-                    if (resData) {
+                if (data.type === 'bibliotech_resource_selected' || data.isbn || data.id || data.uuid || data.title || data.name || data.multiple || data.items) {
+                    const resourcesList = extractAllResourcesData(data);
+                    if (resourcesList.length > 0) {
                         window.removeEventListener('message', handleMessage);
-                        insertResource(editor, resData, modal);
+                        insertResources(editor, resourcesList, modal);
                     }
                 }
             };

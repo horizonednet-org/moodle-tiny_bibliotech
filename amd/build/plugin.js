@@ -49,7 +49,7 @@ define([
         }
 
         const title = item.title || item.name || item.text || 'Bibliotech Resource';
-        let id = item.id || item.uuid || item.isbn || item.identifier || item.resource_id || '';
+        let kind = item.kind || 'book';
 
         const customParamsStr = item.instructorcustomparameters || (typeof item.custom === 'string' ? item.custom : '');
         const customParams = {};
@@ -69,25 +69,40 @@ define([
             });
         }
 
-        if (customParams.publication_id) {
-            id = customParams.publication_id;
-        } else if (customParams.id) {
-            id = customParams.id;
-        } else if (!id) {
-            const targetUrl = item.toolurl || item.url || item.securetoolurl || '';
-            const matches = targetUrl.match(/[?&](?:publication_id|uuid|isbn|id)=([^&]+)/i);
-            if (matches && matches[1]) {
-                id = matches[1];
-            }
+        if (customParams.kind) {
+            kind = customParams.kind.toLowerCase() === 'journal' ? 'journal' : 'book';
         }
 
-        if (!id) {
+        // 1. Search for genuine 36-char UUID in payload
+        const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+        const allText = JSON.stringify(item) + ' ' + (item.instructorcustomparameters || '') + ' ' + (item.toolurl || '') + ' ' + (item.url || '');
+        let uuid = '';
+        const match = allText.match(uuidRegex);
+        if (match) {
+            uuid = match[0].toLowerCase();
+        }
+
+        // 2. Direct property checks
+        if (!uuid) {
+            uuid = item.uuid || customParams.uuid || '';
+        }
+
+        // 3. Fallback to id / publication_id
+        if (!uuid) {
+            uuid = item.id || customParams.publication_id || customParams.id || item.identifier || item.resource_id || '';
+        }
+
+        if (!uuid) {
             return null;
         }
 
+        const uri = 'bibliotech://publication/' + kind + '/' + uuid;
+
         return {
-            id: id,
-            title: title
+            id: uuid,
+            title: title,
+            kind: kind,
+            uri: uri
         };
     }
 
@@ -128,7 +143,7 @@ define([
         if (targetEditor && resourcesList && resourcesList.length > 0) {
             let htmlToInsert = '';
             resourcesList.forEach(function(resData) {
-                htmlToInsert += '<p>[bibliotech id="' + resData.id + '" title="' + resData.title + '"]</p>';
+                htmlToInsert += '<p>[bibliotech id="' + resData.id + '" title="' + resData.title + '" kind="' + resData.kind + '" uri="' + resData.uri + '"]</p>';
             });
             targetEditor.insertContent(htmlToInsert);
         }

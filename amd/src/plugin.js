@@ -24,8 +24,9 @@
 define([
     'editor_tiny/loader',
     'editor_tiny/utils',
-    'core/modal_factory'
-], function(loader, utils, ModalFactory) {
+    'core/modal_factory',
+    'core/modal_events'
+], function(loader, utils, ModalFactory, ModalEvents) {
     'use strict';
 
     const component = 'tiny_bibliotech';
@@ -33,6 +34,7 @@ define([
 
     let activeEditor = null;
     let activeModal = null;
+    let originalProcessContentItemReturnData = null;
 
     var Configuration = {
         configure: function(instanceConfig) {
@@ -148,18 +150,22 @@ define([
             targetEditor.insertContent(htmlToInsert);
         }
 
-        if (modal || activeModal) {
-            const m = modal || activeModal;
-            m.destroy();
-            activeModal = null;
-        }
+        cleanupModalHandler(modal);
     }
 
-    // Global callback expected by Moodle LTI Deep Linking return (mod_lti/contentitem_return)
-    window.processContentItemReturnData = function(returnData) {
-        const resourcesList = extractAllResourcesData(returnData);
-        insertResources(activeEditor, resourcesList, activeModal);
-    };
+    function cleanupModalHandler(modal) {
+        if (originalProcessContentItemReturnData !== null) {
+            window.processContentItemReturnData = originalProcessContentItemReturnData;
+            originalProcessContentItemReturnData = null;
+        }
+
+        const m = modal || activeModal;
+        if (m) {
+            m.destroy();
+        }
+        activeModal = null;
+        activeEditor = null;
+    }
 
     return new Promise(function(resolve) {
         Promise.all([
@@ -182,7 +188,7 @@ define([
                     icon: 'bookmark',
                     tooltip: 'Select Bibliotech Resource',
                     onAction: function() {
-                        openContentSelectionModal(editor, ModalFactory);
+                        openContentSelectionModal(editor, ModalFactory, ModalEvents);
                     }
                 });
 
@@ -190,7 +196,7 @@ define([
                     text: 'Bibliotech Resource',
                     icon: 'bookmark',
                     onAction: function() {
-                        openContentSelectionModal(editor, ModalFactory);
+                        openContentSelectionModal(editor, ModalFactory, ModalEvents);
                     }
                 });
 
@@ -201,8 +207,23 @@ define([
         });
     });
 
-    function openContentSelectionModal(editor, ModalFactory) {
+    function openContentSelectionModal(editor, ModalFactory, ModalEvents) {
         activeEditor = editor;
+
+        // Preserve previous global handler if any
+        if (typeof window.processContentItemReturnData === 'function') {
+            originalProcessContentItemReturnData = window.processContentItemReturnData;
+        }
+
+        // Temporary hook for this TinyMCE modal only
+        window.processContentItemReturnData = function(returnData) {
+            if (activeModal && activeEditor) {
+                const resourcesList = extractAllResourcesData(returnData);
+                insertResources(activeEditor, resourcesList, activeModal);
+            } else if (typeof originalProcessContentItemReturnData === 'function') {
+                originalProcessContentItemReturnData(returnData);
+            }
+        };
 
         ModalFactory.create({
             type: ModalFactory.types.DEFAULT,
@@ -212,6 +233,10 @@ define([
         }).then(function(modal) {
             activeModal = modal;
             modal.show();
+
+            modal.getRoot().on(ModalEvents.hidden, function() {
+                cleanupModalHandler(modal);
+            });
 
             const handleMessage = function(event) {
                 const iframe = document.getElementById('bibliotech_deeplink_iframe');

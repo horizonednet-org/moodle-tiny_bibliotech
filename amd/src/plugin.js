@@ -98,7 +98,13 @@ define([
             return null;
         }
 
-        const uri = 'bibliotech://publication/' + kind + '/' + uuid;
+        const token = customParams.token || customParams.Token || item.token || '';
+        const lcpKey = customParams.lcpKey || customParams.lcpkey || customParams.LcpKey || item.lcpKey || item.lcpkey || '';
+
+        let uri = 'bibliotech://publication/' + kind + '/' + uuid;
+        if (token && lcpKey) {
+            uri += '?token=' + encodeURIComponent(token) + '&lcpKey=' + encodeURIComponent(lcpKey);
+        }
 
         return {
             id: uuid,
